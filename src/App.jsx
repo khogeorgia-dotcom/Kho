@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   DISTRICT_VALUES,
   getInitialLang,
@@ -65,6 +65,8 @@ function useProperties() {
 
 function Header({ t, property = false, lang, onLangChange }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const location = useLocation()
+  const navigate = useNavigate()
 
   useEffect(() => {
     const onResize = () => {
@@ -75,15 +77,31 @@ function Header({ t, property = false, lang, onLangChange }) {
   }, [])
 
   const closeMenu = () => setMenuOpen(false)
+  const onHome = location.pathname === '/'
+  const linkCatalog = onHome ? '#catalog' : '/#catalog'
+  const linkSell = onHome ? '#sell' : '/#sell'
+  const linkAbout = onHome ? '#about' : '/#about'
+  const goToHomeSection = (id) => (event) => {
+    event.preventDefault()
+    closeMenu()
+
+    if (location.pathname === '/') {
+      window.history.pushState(null, '', `#${id}`)
+      document.getElementById(id)?.scrollIntoView({ behavior: 'auto', block: 'start' })
+      return
+    }
+
+    navigate({ pathname: '/', hash: `#${id}` }, { state: { scrollTarget: id } })
+  }
 
   return (
     <header className={`site-header ${property ? 'property-header' : ''}`}>
       <div className={`container nav-container header-inner ${property ? 'top-nav' : ''}`}>
         <a className="brand" href="/" aria-label="KHO Georgia" onClick={closeMenu}><img src="/images/logo.png" alt="KHO logo" /></a>
         <nav className={`nav ${menuOpen ? 'is-open' : ''}`}>
-          <a href="/#catalog" onClick={closeMenu}>{t.nav.buy}</a>
-          <a href="/#sell" onClick={closeMenu}>{t.nav.sell}</a>
-          <a href="/#about" onClick={closeMenu}>{t.nav.about}</a>
+          <a href={linkCatalog} onClick={goToHomeSection('catalog')}>{t.nav.buy}</a>
+          <a href={linkSell} onClick={goToHomeSection('sell')}>{t.nav.sell}</a>
+          <a href={linkAbout} onClick={goToHomeSection('about')}>{t.nav.about}</a>
         </nav>
         <div className="header-controls">
           <button
@@ -242,12 +260,19 @@ function ContactOverlay({ t, open, onClose }) {
 }
 
 function HomePage({ items, lang, setLang }) {
+  const location = useLocation()
   const t = getText(lang)
   const locale = LOCALE_BY_LANG[lang] || 'ru-RU'
   const fmt = (v) => `${new Intl.NumberFormat(locale).format(v)} $`
   const [filters, setFilters] = useState({ type: 'Все', district: 'Все', status: 'Все' })
   const [sortMode, setSortMode] = useState('asc')
   const [contactOpen, setContactOpen] = useState(false)
+
+  useLayoutEffect(() => {
+    const id = location.state?.scrollTarget || location.hash.replace('#', '')
+    if (!id) return
+    document.getElementById(id)?.scrollIntoView({ behavior: 'auto', block: 'start' })
+  }, [location.hash, location.state])
 
   const filtered = useMemo(() => {
     const list = items.filter((x) => {
@@ -309,7 +334,7 @@ function HomePage({ items, lang, setLang }) {
       </section>
       <section className="sell-section" id="sell"><div className="sell-overlay" /><div className="container sell-inner"><h2>{t.sell.title}</h2><p>{t.sell.text}</p><button type="button" onClick={() => setContactOpen(true)}>{t.sell.cta}</button></div></section>
       <ContactOverlay t={t} open={contactOpen} onClose={() => setContactOpen(false)} />
-      <footer className="site-footer" id="contacts"><div className="container footer-inner"><img className="footer-logo" src="/images/footer-logo.png" alt="KHO" /><p>KHO 2024</p><a href="tel:+995599124618">+ 995 599 124 618</a><a href="mailto:kho.georgia@gmail.com">kho.georgia@gmail.com</a></div></footer>
+      <footer className="site-footer" id="contacts"><div className="container footer-inner"><img className="footer-logo" src="/images/footer-logo.png" alt="KHO" /><p>KHO 2026</p><a href="tel:+995599124618">+ 995 599 124 618</a><a href="mailto:kho.georgia@gmail.com">kho.georgia@gmail.com</a></div></footer>
     </>
   )
 }
@@ -324,12 +349,6 @@ function PropertyPage({ items, lang, setLang }) {
   const item = items.find((x) => x.id === id)
   const [mainImage, setMainImage] = useState('')
   const [showPhone, setShowPhone] = useState(false)
-  const [sideMode, setSideMode] = useState('static')
-  const [sideStyle, setSideStyle] = useState(undefined)
-  const layoutRef = React.useRef(null)
-  const leftColRef = React.useRef(null)
-  const sideColRef = React.useRef(null)
-  const sideCardRef = React.useRef(null)
 
   useEffect(() => {
     setMainImage(item?.images?.[0] || item?.image || '')
@@ -341,80 +360,6 @@ function PropertyPage({ items, lang, setLang }) {
     document.body.classList.add('is-property')
     return () => document.body.classList.remove('is-property')
   }, [])
-
-  useEffect(() => {
-    let rafId = 0
-    const updateSideCard = () => {
-      const layout = layoutRef.current
-      const leftCol = leftColRef.current
-      const sideCol = sideColRef.current
-      const sideCard = sideCardRef.current
-      if (!layout || !leftCol || !sideCol || !sideCard) return
-
-      if (window.innerWidth <= 900) {
-        setSideMode('static')
-        setSideStyle(undefined)
-        sideCol.style.minHeight = ''
-        return
-      }
-
-      const topOffset = 96
-      const layoutTopAbs = window.scrollY + layout.getBoundingClientRect().top
-      const leftBottomAbs = window.scrollY + leftCol.getBoundingClientRect().bottom
-      const leftHeight = leftCol.offsetHeight
-      const cardHeight = sideCard.offsetHeight
-      const colRect = sideCol.getBoundingClientRect()
-      const maxTopAbs = leftBottomAbs - cardHeight
-      const maxTopLocal = Math.max(0, leftHeight - cardHeight)
-
-      sideCol.style.minHeight = `${Math.max(cardHeight, leftBottomAbs - layoutTopAbs)}px`
-
-      if (window.scrollY + topOffset <= layoutTopAbs) {
-        setSideMode('static')
-        setSideStyle(undefined)
-        return
-      }
-
-      if (window.scrollY + topOffset >= maxTopAbs) {
-        setSideMode('bottom')
-        const clampedTop = Math.min(
-          maxTopLocal,
-          Math.max(0, maxTopAbs - layoutTopAbs)
-        )
-        setSideStyle({
-          position: 'absolute',
-          top: `${clampedTop}px`,
-          left: '0px',
-          width: '100%',
-        })
-        return
-      }
-
-      setSideMode('fixed')
-      setSideStyle({
-        position: 'fixed',
-        top: `${topOffset}px`,
-        left: `${colRect.left}px`,
-        width: `${colRect.width}px`,
-        zIndex: 40,
-      })
-    }
-
-    const scheduleUpdate = () => {
-      if (rafId) cancelAnimationFrame(rafId)
-      rafId = requestAnimationFrame(updateSideCard)
-    }
-
-    updateSideCard()
-    window.addEventListener('scroll', scheduleUpdate, { passive: true })
-    window.addEventListener('resize', scheduleUpdate)
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId)
-      window.removeEventListener('scroll', scheduleUpdate)
-      window.removeEventListener('resize', scheduleUpdate)
-    }
-  }, [id, item])
-
 
   if (!item) return <div className="container not-found">{t.property.notFound}</div>
   const parsedPoint = parseMapPointInput(item.mapPoint)
@@ -444,18 +389,14 @@ function PropertyPage({ items, lang, setLang }) {
       <Header t={t} property lang={lang} onLangChange={() => setLang(nextLang(lang))} />
       <main className="container property-page">
         <h1 className="property-title">{localizeField(item, 'title', lang)}</h1>
-        <section className="property-layout" ref={layoutRef}>
-          <div ref={leftColRef}>
+        <section className="property-layout">
+          <div className="property-main">
             <div className="gallery-main"><img src={mainImage} alt={localizeField(item, 'title', lang)} /></div>
             <div className="thumbs">{gallery.map((src) => <button key={src} className={`thumb ${src === mainImage ? 'active' : ''}`} onClick={() => setMainImage(src)} type="button"><img src={src} alt="preview" /></button>)}</div>
             <div className="description">{String(localizeField(item, 'description', lang) || '').split('\n').map((line, i) => <React.Fragment key={i}>{line}<br /><br /></React.Fragment>)}</div>
           </div>
-          <aside className="side-sticky" ref={sideColRef}>
-            <div
-              ref={sideCardRef}
-              className={`side-card ${sideMode === 'fixed' ? 'is-floating' : ''} ${sideMode === 'bottom' ? 'is-bottom' : ''}`}
-              style={sideStyle}
-            >
+          <aside className="side-sticky">
+            <div className="side-card">
               <h2 className="price">{fmt(item.price)}</h2>
               <button className="phone-btn" type="button" onClick={() => setShowPhone(true)}>{showPhone ? (item.phone || '+995 599 124 618') : t.property.showPhone}</button>
               <div className="specs">{specRows.map(([k, v]) => <div key={k} className="spec-row"><span className="spec-key">{k}</span><span className="spec-val">{v}</span></div>)}</div>
@@ -464,7 +405,7 @@ function PropertyPage({ items, lang, setLang }) {
         </section>
         <section className="property-map"><iframe loading="lazy" src={mapSrc} /></section>
       </main>
-      <footer className="site-footer"><div className="container footer-inner"><img className="footer-logo" src="/images/footer-logo.png" alt="KHO" /><p>KHO 2024</p><a href="tel:+995599124618">+ 995 599 124 618</a><a href="mailto:kho.georgia@gmail.com">kho.georgia@gmail.com</a></div></footer>
+      <footer className="site-footer"><div className="container footer-inner"><img className="footer-logo" src="/images/footer-logo.png" alt="KHO" /><p>KHO 2026</p><a href="tel:+995599124618">+ 995 599 124 618</a><a href="mailto:kho.georgia@gmail.com">kho.georgia@gmail.com</a></div></footer>
     </>
   )
 }
@@ -989,20 +930,108 @@ function AdminGuard({ items, lang }) {
 export default function App() {
   const { data, loading } = useProperties()
   const [lang, setLang] = useState(getInitialLang)
+  const location = useLocation()
+  const [routeLoading, setRouteLoading] = useState(false)
+  const [routeOverlayMode, setRouteOverlayMode] = useState('home')
+  const prevPathRef = useRef(location.pathname)
 
   useEffect(() => {
     localStorage.setItem('kho_lang', lang)
     document.documentElement.setAttribute('lang', lang)
   }, [lang])
 
-  if (loading) return <div className="app-shell" />
+  useEffect(() => {
+    if (loading || !data.length) return
+
+    const preloadImage = (src) =>
+      new Promise((resolve) => {
+        if (!src) return resolve()
+        const img = new Image()
+        img.onload = () => resolve()
+        img.onerror = () => resolve()
+        img.src = src
+      })
+
+    const preloadCriticalAssetsForPath = async (path) => {
+      const urls = new Set(['/images/hero.jpg'])
+
+      if (path.startsWith('/property/')) {
+        const id = path.split('/').pop()
+        const property = data.find((item) => item.id === id)
+        if (property?.image) urls.add(property.image)
+        ;(property?.gallery || []).slice(0, 2).forEach((src) => src && urls.add(src))
+      } else {
+        data.slice(0, 8).forEach((item) => item?.image && urls.add(item.image))
+      }
+
+      await Promise.race([
+        Promise.all(Array.from(urls).map(preloadImage)),
+        new Promise((resolve) => setTimeout(resolve, 850)),
+      ])
+    }
+
+    if (prevPathRef.current !== location.pathname) {
+      setRouteOverlayMode(location.pathname.startsWith('/property/') ? 'property' : 'home')
+      setRouteLoading(true)
+      preloadCriticalAssetsForPath(location.pathname).finally(() => {
+        requestAnimationFrame(() => setRouteLoading(false))
+      })
+      prevPathRef.current = location.pathname
+    }
+  }, [location.pathname, loading, data])
+
+  useEffect(() => {
+    if (!loading) {
+      const preloadImage = (src) =>
+        new Promise((resolve) => {
+          if (!src) return resolve()
+          const img = new Image()
+          img.onload = () => resolve()
+          img.onerror = () => resolve()
+          img.src = src
+        })
+
+      const preloadCriticalAssets = async () => {
+        const path = window.location.pathname || '/'
+        const urls = new Set(['/images/hero.jpg'])
+
+        if (path.startsWith('/property/')) {
+          const id = path.split('/').pop()
+          const property = data.find((item) => item.id === id)
+          if (property?.image) urls.add(property.image)
+          ;(property?.gallery || []).slice(0, 2).forEach((src) => src && urls.add(src))
+        } else {
+          data.slice(0, 8).forEach((item) => item?.image && urls.add(item.image))
+        }
+
+        await Promise.race([
+          Promise.all(Array.from(urls).map(preloadImage)),
+          new Promise((resolve) => setTimeout(resolve, 850)),
+        ])
+
+        requestAnimationFrame(() => {
+          window.dispatchEvent(new Event('kho:app-ready'))
+        })
+      }
+
+      preloadCriticalAssets()
+    }
+  }, [loading, data])
+
+  if (loading) return null
 
   return (
-    <Routes>
-      <Route path="/" element={<HomePage items={data} lang={lang} setLang={setLang} />} />
-      <Route path="/property/:id" element={<PropertyPage items={data} lang={lang} setLang={setLang} />} />
-      <Route path="/admin" element={<AdminGuard items={data} lang={lang} />} />
-      <Route path="*" element={<LegacyRedirect />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/" element={<HomePage items={data} lang={lang} setLang={setLang} />} />
+        <Route path="/property/:id" element={<PropertyPage items={data} lang={lang} setLang={setLang} />} />
+        <Route path="/admin" element={<AdminGuard items={data} lang={lang} />} />
+        <Route path="*" element={<LegacyRedirect />} />
+      </Routes>
+      <div
+        className={`route-splash ${routeOverlayMode === 'property' ? 'is-property' : 'is-home'} ${routeLoading ? 'is-active' : 'is-hidden'}`}
+        aria-hidden="true"
+      />
+    </>
   )
 }
