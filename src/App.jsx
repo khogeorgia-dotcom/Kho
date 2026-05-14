@@ -194,7 +194,7 @@ function Filters({ t, lang, filters, setFilters, sortMode, setSortMode }) {
 }
 
 function ContactOverlay({ t, open, onClose }) {
-  const [form, setForm] = useState({ name: '', phone: '', social: '' })
+  const [form, setForm] = useState({ name: '', phone: '' })
   const [submitted, setSubmitted] = useState(false)
 
   useEffect(() => {
@@ -222,7 +222,7 @@ function ContactOverlay({ t, open, onClose }) {
           onSubmit={(e) => {
             e.preventDefault()
             setSubmitted(true)
-            setForm({ name: '', phone: '', social: '' })
+            setForm({ name: '', phone: '' })
           }}
         >
           <input
@@ -239,21 +239,9 @@ function ContactOverlay({ t, open, onClose }) {
             onChange={(e) => setForm((v) => ({ ...v, phone: e.target.value }))}
             required
           />
-          <input
-            type="text"
-            placeholder={t.contactForm.social}
-            value={form.social}
-            onChange={(e) => setForm((v) => ({ ...v, social: e.target.value }))}
-          />
           <button type="submit">{t.contactForm.submit}</button>
           {submitted ? <p className="contact-success">{t.contactForm.success}</p> : null}
         </form>
-        <div className="contact-icons">
-          <a href="tel:+995599124618" aria-label="Phone"><img src="/images/icon-phone.png" alt="" /></a>
-          <a href="https://wa.me/995599124618?text=" target="_blank" rel="noreferrer" aria-label="WhatsApp"><img src="/images/icon-whatsapp.png" alt="" /></a>
-          <a href="https://t.me/+995599124618" target="_blank" rel="noreferrer" aria-label="Telegram"><img src="/images/icon-telegram.png" alt="" /></a>
-          <a href="https://msng.link/o?995599124618=vi" target="_blank" rel="noreferrer" aria-label="Viber"><img src="/images/icon-viber.png" alt="" /></a>
-        </div>
       </div>
     </div>
   )
@@ -291,7 +279,7 @@ function HomePage({ items, lang, setLang }) {
       <Filters t={t} lang={lang} filters={filters} setFilters={setFilters} sortMode={sortMode} setSortMode={setSortMode} />
       <section className="catalog"><div className="container"><div className="cards">{filtered.length > 0 ? filtered.map((item) => (
         <a key={item.id} className="card card-link" href={`/property/${item.id}`}>
-          <div className="card-image-wrap"><img src={item.image} alt={localizeValue(lang, item.type)} loading="lazy" draggable={false} /></div>
+          <div className="card-image-wrap"><div className="card-image-inner"><img src={item.image} alt={localizeValue(lang, item.type)} loading="lazy" draggable={false} /></div></div>
           <h3>{fmt(item.price)}</h3>
           <p>{localizeValue(lang, item.type)}</p>
           <small>{t.common.cityPrefix} {localizeField(item, 'city', lang) || localizeValue(lang, item.district)}</small>
