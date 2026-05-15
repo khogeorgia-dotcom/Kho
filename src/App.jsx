@@ -1,402 +1,13 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
-import {
-  DISTRICT_VALUES,
-  getInitialLang,
-  getText,
-  LAND_STATUS_VALUES,
-  localizeValue,
-  LOCALE_BY_LANG,
-  nextLang,
-  TYPE_VALUES,
-} from './i18n/messages'
-import { localizeField, normalizeProperties } from './lib/properties'
-
-const parseMapPointInput = (value) => {
-  const raw = String(value || '').trim()
-  if (!raw) return null
-
-  const parts = raw.split(',').map((x) => x.trim()).filter(Boolean)
-  let lat = null
-  let lng = null
-
-  if (parts.length === 2) {
-    lat = Number(parts[0].replace(',', '.'))
-    lng = Number(parts[1].replace(',', '.'))
-  } else if (parts.length === 4) {
-    lat = Number(`${parts[0]}.${parts[1]}`)
-    lng = Number(`${parts[2]}.${parts[3]}`)
-  }
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
-  return { lat, lng }
-}
-
-const formatMapPoint = ({ lat, lng }) => `${lat.toFixed(6)}, ${lng.toFixed(6)}`
-
-function useProperties() {
-  const [data, setData] = useState([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let active = true
-    const sources = [
-      '/data/properties/land.json',
-      '/data/properties/house.json',
-      '/data/properties/apartment.json',
-      '/data/properties/commercial.json',
-    ]
-    Promise.all(sources.map((src) => fetch(src).then((r) => (r.ok ? r.json() : []))))
-      .then((parts) => {
-        if (!active) return
-        setData(normalizeProperties(parts.flat()))
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-    return () => {
-      active = false
-    }
-  }, [])
-
-  return { data, loading }
-}
-
-function Header({ t, property = false, lang, onLangChange }) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const location = useLocation()
-  const navigate = useNavigate()
-
-  useEffect(() => {
-    const onResize = () => {
-      if (window.innerWidth > 900) setMenuOpen(false)
-    }
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [])
-
-  const closeMenu = () => setMenuOpen(false)
-  const onHome = location.pathname === '/'
-  const linkCatalog = onHome ? '#catalog' : '/#catalog'
-  const linkSell = onHome ? '#sell' : '/#sell'
-  const linkAbout = onHome ? '#about' : '/#about'
-  const goToHomeSection = (id) => (event) => {
-    event.preventDefault()
-    closeMenu()
-
-    if (location.pathname === '/') {
-      window.history.pushState(null, '', `#${id}`)
-      document.getElementById(id)?.scrollIntoView({ behavior: 'auto', block: 'start' })
-      return
-    }
-
-    navigate({ pathname: '/', hash: `#${id}` }, { state: { scrollTarget: id } })
-  }
-
-  return (
-    <header className={`site-header ${property ? 'property-header' : ''}`}>
-      <div className={`container nav-container header-inner ${property ? 'top-nav' : ''}`}>
-        <a className="brand" href="/" aria-label="KHO Georgia" onClick={closeMenu}><img src="/images/logo.png" alt="KHO logo" /></a>
-        <nav className={`nav ${menuOpen ? 'is-open' : ''}`}>
-          <a href={linkCatalog} onClick={goToHomeSection('catalog')}>{t.nav.buy}</a>
-          <a href={linkSell} onClick={goToHomeSection('sell')}>{t.nav.sell}</a>
-          <a href={linkAbout} onClick={goToHomeSection('about')}>{t.nav.about}</a>
-        </nav>
-        <div className="header-controls">
-          <button
-            className={`nav-toggle ${menuOpen ? 'is-open' : ''}`}
-            type="button"
-            aria-label="Toggle menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((v) => !v)}
-          >
-            <span />
-            <span />
-            <span />
-          </button>
-          <button className="lang-btn" type="button" aria-label="Switch language" onClick={onLangChange}>{lang.toUpperCase()}</button>
-        </div>
-      </div>
-    </header>
-  )
-}
-
-function Hero({ t }) {
-  return (
-    <section className="hero">
-      <div className="hero-overlay" />
-      <div className="container hero-inner">
-        <h1>{t.heroTitle.split('\n').map((line, i) => <React.Fragment key={i}>{line}{i === 0 ? <br /> : null}</React.Fragment>)}</h1>
-      </div>
-    </section>
-  )
-}
-
-function CustomDropdown({ title, options, value, onChange, hidden = false, lang }) {
-  const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    const close = () => setOpen(false)
-    document.addEventListener('click', close)
-    return () => document.removeEventListener('click', close)
-  }, [])
-
-  if (hidden) return <div className="filter-group custom-group status-collapsed" />
-
-  return (
-    <div className={`filter-group custom-group ${open ? 'open' : ''}`} onClick={(e) => e.stopPropagation()}>
-      <button className="custom-trigger" type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-        <span className="custom-title">{title}</span>
-        <span className="custom-value">{localizeValue(lang, value)}</span>
-        <span className="custom-arrow" aria-hidden="true" />
-      </button>
-      <div className="custom-menu">
-        {options.map((option) => (
-          <button
-            key={option}
-            className={`custom-option ${option === value ? 'active' : ''}`}
-            type="button"
-            onClick={() => {
-              onChange(option)
-              setOpen(false)
-            }}
-          >
-            {localizeValue(lang, option)}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function Filters({ t, lang, filters, setFilters, sortMode, setSortMode }) {
-  const showStatus = filters.type === 'Земельный участок'
-
-  return (
-    <section className="filters-wrap" id="catalog">
-      <div className="container">
-        <div className="filters-panel" id="filtersPanel">
-          <CustomDropdown title={t.filters.type} options={TYPE_VALUES} value={filters.type} lang={lang} onChange={(type) => setFilters((v) => ({ ...v, type, status: type === 'Земельный участок' ? v.status : 'Все' }))} />
-          <CustomDropdown title={t.filters.district} options={DISTRICT_VALUES} value={filters.district} lang={lang} onChange={(district) => setFilters((v) => ({ ...v, district }))} />
-          <CustomDropdown title={t.filters.status} options={LAND_STATUS_VALUES} value={filters.status} lang={lang} hidden={!showStatus} onChange={(status) => setFilters((v) => ({ ...v, status }))} />
-          <div className="sort-group">
-            <p>{t.filters.sort}</p>
-            <div className="sort-actions">
-              <button className={`sort-btn ${sortMode === 'asc' ? 'active' : ''}`} data-sort="asc" type="button" onClick={() => setSortMode('asc')}>{t.filters.asc}</button>
-              <button className={`sort-btn ${sortMode === 'desc' ? 'active' : ''}`} data-sort="desc" type="button" onClick={() => setSortMode('desc')}>{t.filters.desc}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function ContactOverlay({ t, open, onClose }) {
-  const [form, setForm] = useState({ name: '', phone: '' })
-  const [submitted, setSubmitted] = useState(false)
-
-  useEffect(() => {
-    if (!open) return
-    const onEsc = (e) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onEsc)
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', onEsc)
-      document.body.style.overflow = ''
-    }
-  }, [open, onClose])
-
-  if (!open) return null
-
-  return (
-    <div className="contact-overlay" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="contact-modal" onClick={(e) => e.stopPropagation()}>
-        <button className="contact-close" type="button" onClick={onClose} aria-label={t.contactForm.close}>×</button>
-        <h3>{t.contactForm.title}</h3>
-        <form
-          className="contact-form"
-          onSubmit={(e) => {
-            e.preventDefault()
-            setSubmitted(true)
-            setForm({ name: '', phone: '' })
-          }}
-        >
-          <input
-            type="text"
-            placeholder={t.contactForm.name}
-            value={form.name}
-            onChange={(e) => setForm((v) => ({ ...v, name: e.target.value }))}
-            required
-          />
-          <input
-            type="tel"
-            placeholder={t.contactForm.phone}
-            value={form.phone}
-            onChange={(e) => setForm((v) => ({ ...v, phone: e.target.value }))}
-            required
-          />
-          <button type="submit">{t.contactForm.submit}</button>
-          {submitted ? <p className="contact-success">{t.contactForm.success}</p> : null}
-        </form>
-      </div>
-    </div>
-  )
-}
-
-function HomePage({ items, lang, setLang }) {
-  const location = useLocation()
-  const t = getText(lang)
-  const locale = LOCALE_BY_LANG[lang] || 'ru-RU'
-  const fmt = (v) => `${new Intl.NumberFormat(locale).format(v)} $`
-  const [filters, setFilters] = useState({ type: 'Все', district: 'Все', status: 'Все' })
-  const [sortMode, setSortMode] = useState('asc')
-  const [contactOpen, setContactOpen] = useState(false)
-
-  useLayoutEffect(() => {
-    const id = location.state?.scrollTarget || location.hash.replace('#', '')
-    if (!id) return
-    document.getElementById(id)?.scrollIntoView({ behavior: 'auto', block: 'start' })
-  }, [location.hash, location.state])
-
-  const filtered = useMemo(() => {
-    const list = items.filter((x) => {
-      const okT = filters.type === 'Все' || x.type === filters.type
-      const okD = filters.district === 'Все' || x.district === filters.district
-      const okS = filters.status === 'Все' || x.type !== 'Земельный участок' || x.landStatus === filters.status
-      return okT && okD && okS
-    })
-    return list.sort((a, b) => (sortMode === 'asc' ? a.price - b.price : b.price - a.price))
-  }, [items, filters, sortMode])
-
-  return (
-    <>
-      <Header t={t} lang={lang} onLangChange={() => setLang(nextLang(lang))} />
-      <Hero t={t} />
-      <Filters t={t} lang={lang} filters={filters} setFilters={setFilters} sortMode={sortMode} setSortMode={setSortMode} />
-      <section className="catalog"><div className="container"><div className="cards">{filtered.length > 0 ? filtered.map((item) => (
-        <a key={item.id} className="card card-link" href={`/property/${item.id}`}>
-          <div className="card-image-wrap"><div className="card-image-inner"><img src={item.image} alt={localizeValue(lang, item.type)} loading="lazy" draggable={false} /></div></div>
-          <h3>{fmt(item.price)}</h3>
-          <p>{localizeValue(lang, item.type)}</p>
-          <small>{t.common.cityPrefix} {localizeField(item, 'city', lang) || localizeValue(lang, item.district)}</small>
-        </a>
-      )) : (
-        <article className="card card-empty" aria-live="polite">
-          <div className="card-image-wrap card-empty-cover" />
-          <h3>Скоро появятся новые объекты</h3>
-          <p>Мы постоянно добавляем новые предложения недвижимости.</p>
-        </article>
-      )}</div></div></section>
-      <section className="about-section" id="about">
-        <div className="container about-inner">
-          <div className="about-photo-wrap">
-            <img src="/images/about-person.png" alt="Елена Попова" />
-          </div>
-          <div className="about-content">
-            <h2>{t.about.title}</h2>
-            <p>{t.about.p1}</p>
-            <p>{t.about.p2}</p>
-            <p>{t.about.p3}</p>
-            <p>{t.about.p4}</p>
-            <p>{t.about.p5}</p>
-            <div className="about-socials">
-              <a href="tel:+995599124618" aria-label="Phone">
-                <img src="/images/icon-phone.png" alt="" />
-              </a>
-              <a href="https://wa.me/995599124618?text=" target="_blank" rel="noreferrer" aria-label="WhatsApp">
-                <img src="/images/icon-whatsapp.png" alt="" />
-              </a>
-              <a href="https://t.me/+995599124618" target="_blank" rel="noreferrer" aria-label="Telegram">
-                <img src="/images/icon-telegram.png" alt="" />
-              </a>
-              <a href="https://msng.link/o?995599124618=vi" target="_blank" rel="noreferrer" aria-label="Viber">
-                <img src="/images/icon-viber.png" alt="" />
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
-      <section className="sell-section" id="sell"><div className="sell-overlay" /><div className="container sell-inner"><h2>{t.sell.title}</h2><p>{t.sell.text}</p><button type="button" onClick={() => setContactOpen(true)}>{t.sell.cta}</button></div></section>
-      <ContactOverlay t={t} open={contactOpen} onClose={() => setContactOpen(false)} />
-      <footer className="site-footer" id="contacts"><div className="container footer-inner"><img className="footer-logo" src="/images/footer-logo.png" alt="KHO" /><p>KHO 2026</p><a href="tel:+995599124618">+ 995 599 124 618</a><a href="mailto:kho.georgia@gmail.com">kho.georgia@gmail.com</a></div></footer>
-    </>
-  )
-}
-
-function PropertyPage({ items, lang, setLang }) {
-  const { id } = useParams()
-  const t = getText(lang)
-  const locale = LOCALE_BY_LANG[lang] || 'ru-RU'
-  const fmt = (v) => `${new Intl.NumberFormat(locale).format(v)} $`
-  const fmtNum = (v) => new Intl.NumberFormat(locale).format(v)
-
-  const item = items.find((x) => x.id === id)
-  const [mainImage, setMainImage] = useState('')
-  const [showPhone, setShowPhone] = useState(false)
-
-  useEffect(() => {
-    setMainImage(item?.images?.[0] || item?.image || '')
-    setShowPhone(false)
-    window.scrollTo({ top: 0, behavior: 'auto' })
-  }, [id, item])
-
-  useEffect(() => {
-    document.body.classList.add('is-property')
-    return () => document.body.classList.remove('is-property')
-  }, [])
-
-  if (!item) return <div className="container not-found">{t.property.notFound}</div>
-  const parsedPoint = parseMapPointInput(item.mapPoint)
-  const mapLat = parsedPoint?.lat ?? (Number.isFinite(Number(item.mapLat)) ? Number(item.mapLat) : 41.723038)
-  const mapLng = parsedPoint?.lng ?? (Number.isFinite(Number(item.mapLng)) ? Number(item.mapLng) : 41.741675)
-  const mapSrc = `https://maps.google.com/maps?q=${mapLat},${mapLng}&z=15&output=embed`
-
-  const gallery = item.images?.length ? item.images : [item.image]
-  const specRows = []
-  specRows.push([t.property.district, localizeValue(lang, item.district)])
-  specRows.push(['Город', localizeField(item, 'city', lang) || localizeValue(lang, item.district)])
-  if (item.type === 'Земельный участок') {
-    specRows.push([t.property.areaPlot, `${item.areaSotok || '-'} соток`])
-    specRows.push([t.property.statusPlot, localizeValue(lang, item.landStatus || 'Все')])
-    specRows.push([t.property.pricePerPlot, item.pricePerSotok ? fmt(item.pricePerSotok) : '-'])
-  }
-  if (item.type === 'Дом') {
-    specRows.push([t.property.houseArea, item.houseAreaM2 ? `${fmtNum(item.houseAreaM2)} кв.м.` : '-'])
-    specRows.push([t.property.floors, item.floors || '-'])
-    specRows.push([t.property.finish, localizeField(item, 'finish', lang) || '—'])
-    specRows.push([t.property.areaPlot, item.landAreaM2 ? `${fmtNum(item.landAreaM2)} кв.м.` : '-'])
-  }
-  specRows.push([t.property.seaDistance, `${item.distanceToSeaKm || '-'} км`])
-
-  return (
-    <>
-      <Header t={t} property lang={lang} onLangChange={() => setLang(nextLang(lang))} />
-      <main className="container property-page">
-        <h1 className="property-title">{localizeField(item, 'title', lang)}</h1>
-        <section className="property-layout">
-          <div className="property-main">
-            <div className="gallery-main"><img src={mainImage} alt={localizeField(item, 'title', lang)} /></div>
-            <div className="thumbs">{gallery.map((src) => <button key={src} className={`thumb ${src === mainImage ? 'active' : ''}`} onClick={() => setMainImage(src)} type="button"><img src={src} alt="preview" /></button>)}</div>
-            <div className="description">{String(localizeField(item, 'description', lang) || '').split('\n').map((line, i) => <React.Fragment key={i}>{line}<br /><br /></React.Fragment>)}</div>
-          </div>
-          <aside className="side-sticky">
-            <div className="side-card">
-              <h2 className="price">{fmt(item.price)}</h2>
-              <button className="phone-btn" type="button" onClick={() => setShowPhone(true)}>{showPhone ? (item.phone || '+995 599 124 618') : t.property.showPhone}</button>
-              <div className="specs">{specRows.map(([k, v]) => <div key={k} className="spec-row"><span className="spec-key">{k}</span><span className="spec-val">{v}</span></div>)}</div>
-            </div>
-          </aside>
-        </section>
-        <section className="property-map"><iframe loading="lazy" src={mapSrc} /></section>
-      </main>
-      <footer className="site-footer"><div className="container footer-inner"><img className="footer-logo" src="/images/footer-logo.png" alt="KHO" /><p>KHO 2026</p><a href="tel:+995599124618">+ 995 599 124 618</a><a href="mailto:kho.georgia@gmail.com">kho.georgia@gmail.com</a></div></footer>
-    </>
-  )
-}
+import { useEffect, useMemo, useState } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { getInitialLang } from './i18n/messages'
+import { normalizeProperties } from './lib/properties'
+import { useProperties } from './hooks/useProperties'
+import { formatMapPoint, parseMapPointInput } from './utils/mapPoint'
+import HomePage from './pages/HomePage'
+import PropertyPage from './pages/PropertyPage'
+import { DISTRICT_VALUES, LAND_STATUS_VALUES, TYPE_VALUES } from './i18n/messages'
+import { localizeField } from './lib/properties'
 
 function AdminField({ label, value, onChange, multiline = false, type = 'text' }) {
   return (
@@ -419,12 +30,8 @@ const TYPE_I18N_LABELS = {
 }
 
 const CITY_BY_DISTRICT = {
-  Батуми: [
-    { ru: 'Батуми', en: 'Batumi', ka: 'ბათუმი' },
-  ],
-  Батумский: [
-    { ru: 'Батуми', en: 'Batumi', ka: 'ბათუმი' },
-  ],
+  Батуми: [{ ru: 'Батуми', en: 'Batumi', ka: 'ბათუმი' }],
+  Батумский: [{ ru: 'Батуми', en: 'Batumi', ka: 'ბათუმი' }],
   Шуахевский: [
     { ru: 'Шуахеви', en: 'Shuakhevi', ka: 'შუახევი' },
     { ru: 'Даблити', en: 'Dabliti', ka: 'დაბლითი' },
@@ -456,16 +63,7 @@ const CITY_BY_DISTRICT = {
 
 function createEmptyProperty(nextId = 'new-property', selectedType = 'Земельный участок') {
   const placeholderSvg = encodeURIComponent(
-    `<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'>
-      <defs>
-        <linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>
-          <stop offset='0%' stop-color='#e9edf4'/>
-          <stop offset='100%' stop-color='#d7dfea'/>
-        </linearGradient>
-      </defs>
-      <rect width='100%' height='100%' fill='url(#g)'/>
-      <text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='Montserrat, Arial, sans-serif' font-size='52' fill='#5f6d84'>Фото пока нет</text>
-    </svg>`,
+    `<svg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0%' stop-color='#e9edf4'/><stop offset='100%' stop-color='#d7dfea'/></linearGradient></defs><rect width='100%' height='100%' fill='url(#g)'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' font-family='Montserrat, Arial, sans-serif' font-size='52' fill='#5f6d84'>Фото пока нет</text></svg>`,
   )
   const placeholderImage = `data:image/svg+xml;charset=UTF-8,${placeholderSvg}`
   const localizedType = TYPE_I18N_LABELS[selectedType] || TYPE_I18N_LABELS['Земельный участок']
@@ -489,16 +87,8 @@ function createEmptyProperty(nextId = 'new-property', selectedType = 'Земел
     images: [placeholderImage],
     title: localizedType,
     city: defaultCity,
-    finish: {
-      ru: 'Чистовая',
-      en: 'Turnkey',
-      ka: 'სრული რემონტით',
-    },
-    description: {
-      ru: 'Добавьте описание объекта.',
-      en: 'Add property description.',
-      ka: 'დაამატეთ ობიექტის აღწერა.',
-    },
+    finish: { ru: 'Чистовая', en: 'Turnkey', ka: 'სრული რემონტით' },
+    description: { ru: 'Добавьте описание объекта.', en: 'Add property description.', ka: 'დაამატეთ ობიექტის აღწერა.' },
   }
 }
 
@@ -522,29 +112,24 @@ function AdminPage({ items, lang }) {
   const [working, setWorking] = useState(() => JSON.parse(JSON.stringify(items)))
   const [selectedId, setSelectedId] = useState(items[0]?.id || '')
   const [selectedType, setSelectedType] = useState('Земельный участок')
-  const [newImageUrl, setNewImageUrl] = useState('')
   const [saveState, setSaveState] = useState('idle')
   const [saveMessage, setSaveMessage] = useState('')
   const selected = useMemo(() => working.find((x) => x.id === selectedId), [working, selectedId])
   const adminTypes = TYPE_VALUES.filter((x) => x !== 'Все')
   const filteredByType = useMemo(() => {
     const prefix = TYPE_TO_PREFIX[selectedType] || 'property'
-    return working
-      .filter((x) => x.type === selectedType)
-      .sort((a, b) => extractIdNumber(b.id, prefix) - extractIdNumber(a.id, prefix))
+    return working.filter((x) => x.type === selectedType).sort((a, b) => extractIdNumber(b.id, prefix) - extractIdNumber(a.id, prefix))
   }, [working, selectedType])
 
   useEffect(() => {
     setWorking(JSON.parse(JSON.stringify(items)))
     if (!selectedId && items[0]?.id) setSelectedId(items[0].id)
-  }, [items])
+  }, [items, selectedId])
 
   useEffect(() => {
     if (filteredByType.length === 0) return
     const existsInGroup = filteredByType.some((x) => x.id === selectedId)
-    if (!existsInGroup) {
-      setSelectedId(filteredByType[0].id)
-    }
+    if (!existsInGroup) setSelectedId(filteredByType[0].id)
   }, [filteredByType, selectedId])
 
   const updateSelected = (patch) => {
@@ -563,15 +148,8 @@ function AdminPage({ items, lang }) {
   }
 
   const reloadFromTypedFiles = async () => {
-    const sources = [
-      '/data/properties/land.json',
-      '/data/properties/house.json',
-      '/data/properties/apartment.json',
-      '/data/properties/commercial.json',
-    ]
-    const parts = await Promise.all(
-      sources.map((src) => fetch(`${src}?t=${Date.now()}`).then((r) => (r.ok ? r.json() : []))),
-    )
+    const sources = ['/data/properties/land.json', '/data/properties/house.json', '/data/properties/apartment.json', '/data/properties/commercial.json']
+    const parts = await Promise.all(sources.map((src) => fetch(`${src}?t=${Date.now()}`).then((r) => (r.ok ? r.json() : []))))
     return normalizeProperties(parts.flat())
   }
 
@@ -601,9 +179,7 @@ function AdminPage({ items, lang }) {
 
   const addProperty = () => {
     const prefix = TYPE_TO_PREFIX[selectedType] || 'property'
-    const maxInGroup = working
-      .filter((x) => x.type === selectedType)
-      .reduce((max, item) => Math.max(max, extractIdNumber(item.id, prefix)), 0)
+    const maxInGroup = working.filter((x) => x.type === selectedType).reduce((max, item) => Math.max(max, extractIdNumber(item.id, prefix)), 0)
     const nextNumber = maxInGroup + 1
     const candidate = `${prefix}-${String(nextNumber).padStart(3, '0')}`
     const created = createEmptyProperty(candidate, selectedType)
@@ -618,18 +194,9 @@ function AdminPage({ items, lang }) {
     setWorking((prev) => {
       const next = prev.filter((x) => x.id !== selectedId)
       setSelectedId(next[0]?.id || '')
-      window.setTimeout(() => {
-        saveJson(next)
-      }, 0)
+      window.setTimeout(() => { saveJson(next) }, 0)
       return next
     })
-  }
-
-  const addGalleryImage = () => {
-    if (!selected || !newImageUrl.trim()) return
-    const next = [...(selected.images || []), newImageUrl.trim()]
-    updateSelected({ images: next, image: selected.image || next[0] || '' })
-    setNewImageUrl('')
   }
 
   const removeGalleryImage = (idx) => {
@@ -638,12 +205,14 @@ function AdminPage({ items, lang }) {
     const nextCover = selected.image === selected.images?.[idx] ? (next[0] || '') : selected.image
     updateSelected({ images: next, image: nextCover })
   }
+
   const makeCoverByIndex = (idx) => {
     if (!selected) return
     const current = selected.images || []
     if (!current[idx]) return
     updateSelected({ image: current[idx] })
   }
+
   const addGalleryImagePrompt = () => {
     const url = window.prompt('URL нового фото')
     if (!url || !url.trim()) return
@@ -662,9 +231,7 @@ function AdminPage({ items, lang }) {
         <h1>Admin Panel</h1>
         <div className="admin-modern-actions">
           <button type="button" className="danger" onClick={deleteProperty}>Удалить</button>
-          <button type="button" onClick={saveJson} disabled={saveState === 'saving'}>
-            {saveState === 'saving' ? 'Сохраняю...' : saveState === 'saved' ? 'Сохранено' : saveState === 'error' ? 'Ошибка' : 'Сохранить'}
-          </button>
+          <button type="button" onClick={saveJson} disabled={saveState === 'saving'}>{saveState === 'saving' ? 'Сохраняю...' : saveState === 'saved' ? 'Сохранено' : saveState === 'error' ? 'Ошибка' : 'Сохранить'}</button>
         </div>
       </div>
       {saveMessage ? <p className="admin-save-message">{saveMessage}</p> : null}
@@ -679,22 +246,12 @@ function AdminPage({ items, lang }) {
           </label>
           <div className="admin-list">
             {filteredByType.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`admin-list-item ${item.id === selectedId ? 'active' : ''}`}
-                onClick={() => setSelectedId(item.id)}
-              >
+              <button key={item.id} type="button" className={`admin-list-item ${item.id === selectedId ? 'active' : ''}`} onClick={() => setSelectedId(item.id)}>
                 <strong>{item.id}</strong>
                 <span>{localizeField(item, 'title', lang) || 'Без названия'}</span>
               </button>
             ))}
-            <button
-              type="button"
-              className="admin-list-item admin-list-item-add"
-              onClick={addProperty}
-              aria-label="Добавить новую карточку"
-            >
+            <button type="button" className="admin-list-item admin-list-item-add" onClick={addProperty} aria-label="Добавить новую карточку">
               <strong>+</strong>
               <span>Добавить карточку</span>
             </button>
@@ -716,12 +273,7 @@ function AdminPage({ items, lang }) {
                     {['ru', 'en', 'ka'].map((lng) => (
                       <div key={lng} className="admin-visual-i18n-col">
                         <strong>{lng.toUpperCase()}</strong>
-                        <input
-                          className="admin-visual-input admin-visual-title-input"
-                          value={selected.title?.[lng] || ''}
-                          onChange={(e) => updateLocal('title', lng, e.target.value)}
-                          placeholder={`Title ${lng.toUpperCase()}`}
-                        />
+                        <input className="admin-visual-input admin-visual-title-input" value={selected.title?.[lng] || ''} onChange={(e) => updateLocal('title', lng, e.target.value)} placeholder={`Title ${lng.toUpperCase()}`} />
                       </div>
                     ))}
                   </div>
@@ -734,9 +286,7 @@ function AdminPage({ items, lang }) {
                         <div key={`${img}-${idx}`} className="admin-visual-thumb-item">
                           <img src={img} alt={`thumb-${idx}`} />
                           <button type="button" className="admin-thumb-remove" onClick={() => removeGalleryImage(idx)}>×</button>
-                          <button type="button" className="admin-thumb-cover" onClick={() => makeCoverByIndex(idx)}>
-                            {selected.image === img ? 'Главная' : 'Сделать главной'}
-                          </button>
+                          <button type="button" className="admin-thumb-cover" onClick={() => makeCoverByIndex(idx)}>{selected.image === img ? 'Главная' : 'Сделать главной'}</button>
                         </div>
                       ))}
                       <button type="button" className="admin-visual-thumb-add" onClick={addGalleryImagePrompt}>+</button>
@@ -747,57 +297,34 @@ function AdminPage({ items, lang }) {
                     <div className="admin-visual-facts">
                       <div>
                         <span>Район</span>
-                        <select
-                          className="admin-visual-input"
-                          value={selected.district || 'Шуахевский'}
-                          onChange={(e) => {
-                            const district = e.target.value
-                            const firstCity = CITY_BY_DISTRICT[district]?.[0]
-                            updateSelected({
-                              district,
-                              city: firstCity ? { ...firstCity } : selected.city,
-                            })
-                          }}
-                        >
+                        <select className="admin-visual-input" value={selected.district || 'Шуахевский'} onChange={(e) => {
+                          const district = e.target.value
+                          const firstCity = CITY_BY_DISTRICT[district]?.[0]
+                          updateSelected({ district, city: firstCity ? { ...firstCity } : selected.city })
+                        }}>
                           {DISTRICT_VALUES.filter((x) => x !== 'Все').map((x) => <option key={x} value={x}>{x}</option>)}
                         </select>
                       </div>
                       <div>
                         <span>Город</span>
-                        <select
-                          className="admin-visual-input"
-                          value={currentCityLabel}
-                          onChange={(e) => {
-                            const next = cityOptions.find((x) => x.ru === e.target.value)
-                            if (!next) return
-                            updateSelected({ city: { ...next } })
-                          }}
-                        >
+                        <select className="admin-visual-input" value={currentCityLabel} onChange={(e) => {
+                          const next = cityOptions.find((x) => x.ru === e.target.value)
+                          if (!next) return
+                          updateSelected({ city: { ...next } })
+                        }}>
                           {cityOptions.map((c) => <option key={c.ru} value={c.ru}>{c.ru}</option>)}
                         </select>
                       </div>
-                      <div>
-                        <span>Телефон</span>
-                        <input className="admin-visual-input" value={selected.phone ?? ''} onChange={(e) => updateSelected({ phone: e.target.value })} />
-                      </div>
+                      <div><span>Телефон</span><input className="admin-visual-input" value={selected.phone ?? ''} onChange={(e) => updateSelected({ phone: e.target.value })} /></div>
                       <div>
                         <span>Локация (lat,lng)</span>
-                        <input
-                          className="admin-visual-input"
-                          value={selected.mapPoint ?? ''}
-                          onChange={(e) => updateSelected({ mapPoint: e.target.value })}
-                          onBlur={(e) => {
-                            const parsed = parseMapPointInput(e.target.value)
-                            if (!parsed) return
-                            updateSelected({ mapPoint: formatMapPoint(parsed) })
-                          }}
-                          placeholder="41.795199, 41.855980"
-                        />
+                        <input className="admin-visual-input" value={selected.mapPoint ?? ''} onChange={(e) => updateSelected({ mapPoint: e.target.value })} onBlur={(e) => {
+                          const parsed = parseMapPointInput(e.target.value)
+                          if (!parsed) return
+                          updateSelected({ mapPoint: formatMapPoint(parsed) })
+                        }} placeholder="41.795199, 41.855980" />
                       </div>
-                      <div>
-                        <span>Площадь участка</span>
-                        <input className="admin-visual-input" value={selected.areaSotok ?? ''} type="number" onChange={(e) => updateSelected({ areaSotok: toNumber(e.target.value) })} />
-                      </div>
+                      <div><span>Площадь участка</span><input className="admin-visual-input" value={selected.areaSotok ?? ''} type="number" onChange={(e) => updateSelected({ areaSotok: toNumber(e.target.value) })} /></div>
                       {selected.type === 'Земельный участок' ? (
                         <div>
                           <span>Статус участка</span>
@@ -806,24 +333,12 @@ function AdminPage({ items, lang }) {
                           </select>
                         </div>
                       ) : null}
-                      <div>
-                        <span>Цена за сотку</span>
-                        <input className="admin-visual-input" value={selected.pricePerSotok ?? ''} type="number" onChange={(e) => updateSelected({ pricePerSotok: toNumber(e.target.value) })} />
-                      </div>
-                      <div>
-                        <span>Расстояние до моря</span>
-                        <input className="admin-visual-input" value={selected.distanceToSeaKm ?? ''} type="number" onChange={(e) => updateSelected({ distanceToSeaKm: toNumber(e.target.value) })} />
-                      </div>
+                      <div><span>Цена за сотку</span><input className="admin-visual-input" value={selected.pricePerSotok ?? ''} type="number" onChange={(e) => updateSelected({ pricePerSotok: toNumber(e.target.value) })} /></div>
+                      <div><span>Расстояние до моря</span><input className="admin-visual-input" value={selected.distanceToSeaKm ?? ''} type="number" onChange={(e) => updateSelected({ distanceToSeaKm: toNumber(e.target.value) })} /></div>
                       <div>
                         <span>Цена</span>
                         <div className="admin-visual-price-edit">
-                          <input
-                            className="admin-visual-input admin-visual-price-input"
-                            value={selected.price ?? ''}
-                            onChange={(e) => updateSelected({ price: toNumber(e.target.value) })}
-                            type="number"
-                            placeholder="Цена"
-                          />
+                          <input className="admin-visual-input admin-visual-price-input" value={selected.price ?? ''} onChange={(e) => updateSelected({ price: toNumber(e.target.value) })} type="number" placeholder="Цена" />
                           <span>$</span>
                         </div>
                       </div>
@@ -877,9 +392,7 @@ function AdminGuard({ items, lang }) {
     setError('Неверный логин или пароль')
   }
 
-  if (isAuthed) {
-    return <AdminPage items={items} lang={lang} />
-  }
+  if (isAuthed) return <AdminPage items={items} lang={lang} />
 
   return (
     <main className="admin-login-page">
@@ -889,23 +402,11 @@ function AdminGuard({ items, lang }) {
         <form onSubmit={onSubmit} className="admin-login-form">
           <label>
             <span>Логин</span>
-            <input
-              type="text"
-              value={login}
-              onChange={(e) => setLogin(e.target.value)}
-              autoComplete="username"
-              placeholder="Введите логин"
-            />
+            <input type="text" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" placeholder="Введите логин" />
           </label>
           <label>
             <span>Пароль</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              placeholder="Введите пароль"
-            />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" placeholder="Введите пароль" />
           </label>
           {error ? <div className="admin-login-error">{error}</div> : null}
           <button type="submit">Войти</button>
@@ -918,10 +419,6 @@ function AdminGuard({ items, lang }) {
 export default function App() {
   const { data, loading } = useProperties()
   const [lang, setLang] = useState(getInitialLang)
-  const location = useLocation()
-  const [routeLoading, setRouteLoading] = useState(false)
-  const [routeOverlayMode, setRouteOverlayMode] = useState('home')
-  const prevPathRef = useRef(location.pathname)
 
   useEffect(() => {
     localStorage.setItem('kho_lang', lang)
@@ -929,81 +426,26 @@ export default function App() {
   }, [lang])
 
   useEffect(() => {
-    if (loading || !data.length) return
+    if (loading) return
 
-    const preloadImage = (src) =>
-      new Promise((resolve) => {
-        if (!src) return resolve()
-        const img = new Image()
-        img.onload = () => resolve()
-        img.onerror = () => resolve()
-        img.src = src
-      })
+    const path = window.location.pathname || '/'
+    const urls = new Set(['/images/hero.jpg'])
 
-    const preloadCriticalAssetsForPath = async (path) => {
-      const urls = new Set(['/images/hero.jpg'])
-
-      if (path.startsWith('/property/')) {
-        const id = path.split('/').pop()
-        const property = data.find((item) => item.id === id)
-        if (property?.image) urls.add(property.image)
-        ;(property?.gallery || []).slice(0, 2).forEach((src) => src && urls.add(src))
-      } else {
-        data.slice(0, 8).forEach((item) => item?.image && urls.add(item.image))
-      }
-
-      await Promise.race([
-        Promise.all(Array.from(urls).map(preloadImage)),
-        new Promise((resolve) => setTimeout(resolve, 850)),
-      ])
+    if (path.startsWith('/property/')) {
+      const routeId = path.split('/').pop()
+      const property = data.find((item) => item.id === routeId)
+      if (property?.image) urls.add(property.image)
+      ;(property?.images || property?.gallery || []).slice(0, 1).forEach((src) => src && urls.add(src))
+    } else {
+      data.slice(0, 4).forEach((item) => item?.image && urls.add(item.image))
     }
 
-    if (prevPathRef.current !== location.pathname) {
-      setRouteOverlayMode(location.pathname.startsWith('/property/') ? 'property' : 'home')
-      setRouteLoading(true)
-      preloadCriticalAssetsForPath(location.pathname).finally(() => {
-        requestAnimationFrame(() => setRouteLoading(false))
-      })
-      prevPathRef.current = location.pathname
-    }
-  }, [location.pathname, loading, data])
-
-  useEffect(() => {
-    if (!loading) {
-      const preloadImage = (src) =>
-        new Promise((resolve) => {
-          if (!src) return resolve()
-          const img = new Image()
-          img.onload = () => resolve()
-          img.onerror = () => resolve()
-          img.src = src
-        })
-
-      const preloadCriticalAssets = async () => {
-        const path = window.location.pathname || '/'
-        const urls = new Set(['/images/hero.jpg'])
-
-        if (path.startsWith('/property/')) {
-          const id = path.split('/').pop()
-          const property = data.find((item) => item.id === id)
-          if (property?.image) urls.add(property.image)
-          ;(property?.gallery || []).slice(0, 2).forEach((src) => src && urls.add(src))
-        } else {
-          data.slice(0, 8).forEach((item) => item?.image && urls.add(item.image))
-        }
-
-        await Promise.race([
-          Promise.all(Array.from(urls).map(preloadImage)),
-          new Promise((resolve) => setTimeout(resolve, 850)),
-        ])
-
-        requestAnimationFrame(() => {
-          window.dispatchEvent(new Event('kho:app-ready'))
-        })
-      }
-
-      preloadCriticalAssets()
-    }
+    // Fire-and-forget prewarm, without blocking first paint.
+    urls.forEach((src) => {
+      if (!src) return
+      const img = new Image()
+      img.src = src
+    })
   }, [loading, data])
 
   if (loading) return null
@@ -1016,10 +458,6 @@ export default function App() {
         <Route path="/admin" element={<AdminGuard items={data} lang={lang} />} />
         <Route path="*" element={<LegacyRedirect />} />
       </Routes>
-      <div
-        className={`route-splash ${routeOverlayMode === 'property' ? 'is-property' : 'is-home'} ${routeLoading ? 'is-active' : 'is-hidden'}`}
-        aria-hidden="true"
-      />
     </>
   )
 }

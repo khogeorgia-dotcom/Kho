@@ -28,54 +28,8 @@ body {
 a { color: inherit; }
 
 .app-shell {
-  opacity: 0;
-  transition: none;
-}
-
-body.app-ready .app-shell {
   opacity: 1;
 }
-
-#boot-splash {
-  position: fixed;
-  inset: 0;
-  z-index: 9999;
-  background: #fff;
-  pointer-events: none;
-  opacity: 1;
-  transition: opacity .16s ease;
-}
-
-#boot-splash.is-home {
-  background: #101925 url('/images/hero.jpg') center calc(50% + 26px) / cover no-repeat;
-}
-
-#boot-splash.is-property {
-  background: #fff;
-}
-
-#boot-splash.is-hidden {
-  opacity: 0;
-}
-
-.route-splash {
-  position: fixed;
-  inset: 0;
-  z-index: 9998;
-  pointer-events: none;
-  opacity: 0;
-  background: #fff;
-  transition: opacity .12s ease;
-}
-
-.route-splash.is-home {
-  background: #101925 url('/images/hero.jpg') center calc(50% + 26px) / cover no-repeat;
-}
-
-.route-splash.is-property { background: #fff; }
-
-.route-splash.is-active { opacity: 1; }
-.route-splash.is-hidden { opacity: 0; }
 
 body.is-property {
   background: #fff;
