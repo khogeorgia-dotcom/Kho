@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 
-export default function ContactOverlay({ t, open, onClose }) {
+export default function ContactOverlay({ t, open, onClose, lang = 'ru' }) {
   const [form, setForm] = useState({ name: '', phone: '' })
   const [submitted, setSubmitted] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     if (!open) return
@@ -26,10 +28,31 @@ export default function ContactOverlay({ t, open, onClose }) {
         <h3>{t.contactForm.title}</h3>
         <form
           className="contact-form"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault()
-            setSubmitted(true)
-            setForm({ name: '', phone: '' })
+            setSending(true)
+            setError('')
+            setSubmitted(false)
+            try {
+              const response = await fetch('/api/contact', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  name: form.name,
+                  phone: form.phone,
+                  lang,
+                  page: window.location.href,
+                }),
+              })
+              const payload = await response.json().catch(() => ({}))
+              if (!response.ok) throw new Error(payload?.error || 'Request failed')
+              setSubmitted(true)
+              setForm({ name: '', phone: '' })
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Request failed')
+            } finally {
+              setSending(false)
+            }
           }}
         >
           <input
@@ -46,8 +69,9 @@ export default function ContactOverlay({ t, open, onClose }) {
             onChange={(e) => setForm((v) => ({ ...v, phone: e.target.value }))}
             required
           />
-          <button type="submit">{t.contactForm.submit}</button>
+          <button type="submit" disabled={sending}>{sending ? 'Sending...' : t.contactForm.submit}</button>
           {submitted ? <p className="contact-success">{t.contactForm.success}</p> : null}
+          {error ? <p className="contact-error">{error}</p> : null}
         </form>
       </div>
     </div>

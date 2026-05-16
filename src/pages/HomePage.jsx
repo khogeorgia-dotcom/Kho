@@ -92,7 +92,7 @@ export default function HomePage({ items, lang, setLang }) {
         </div>
       </section>
       <section className="sell-section" id="sell"><div className="sell-overlay" /><div className="container sell-inner"><h2>{t.sell.title}</h2><p>{t.sell.text}</p><button type="button" onClick={() => setContactOpen(true)}>{t.sell.cta}</button></div></section>
-      <ContactOverlay t={t} open={contactOpen} onClose={() => setContactOpen(false)} />
+      <ContactOverlay t={t} open={contactOpen} onClose={() => setContactOpen(false)} lang={lang} />
       <footer className="site-footer" id="contacts"><div className="container footer-inner"><img className="footer-logo" src="/images/footer-logo.png" alt="KHO" /><p>KHO 2026</p><a href="tel:+995599124618">+ 995 599 124 618</a><a href="mailto:kho.georgia@gmail.com">kho.georgia@gmail.com</a></div></footer>
     </>
   )

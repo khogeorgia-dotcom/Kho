@@ -676,10 +676,21 @@ body.is-property {
   background: var(--btn-hover);
 }
 
+.contact-form button:disabled {
+  opacity: .72;
+  cursor: not-allowed;
+}
+
 .contact-success {
   margin: 4px 2px 0;
   font-size: 15px;
   color: #2d7f43;
+}
+
+.contact-error {
+  margin: 4px 2px 0;
+  font-size: 14px;
+  color: #a33a3a;
 }
 
 .site-footer {
